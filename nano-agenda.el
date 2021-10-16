@@ -5,7 +5,7 @@
 ;; Maintainer: Nicolas P. Rougier <Nicolas.Rougier@inria.fr>
 ;; URL: https://github.com/rougier/nano-agenda
 ;; Version: 0.1
-;; Package-Requires: ((emacs "27.1"))
+;; Package-Requires: ((emacs "27.1") (ts "0.2.2"))
 ;; Keywords: convenience, org-mode, org-agenda
 
 ;; This file is not part of GNU Emacs.
@@ -73,12 +73,14 @@
                                                "#FCC419" "#FAB005" "#F59F00" "#F08C00" "#E67700")
   "Background colors to be used to highlight a day in calendar
   view according to busy level."
+  :type '(repeat color)
   :group 'nano-agenda-faces)
 
 (defcustom nano-agenda-busy-foregrounds (list "#000000" "#000000" "#000000" "#000000" "#000000"
                                               "#000000" "#000000" "#000000" "#000000" "#FFFFFF")
   "Foreground colors to be used to highlight a day in calendar
   view according to busy level."
+  :type '(repeat color)
   :group 'nano-agenda-faces)
 
 (defface nano-agenda-default
@@ -245,6 +247,7 @@ entries."
     (insert (format "%s %s\n" hours text))))
 
 
+;;;###autoload
 (defun nano-agenda ()
   "Create windows & buffers associated with the agenda."
 
@@ -337,7 +340,7 @@ for efficiency."
     (if entry
         (cadr entry)
       (progn
-        (dolist (file org-agenda-files)
+        (dolist (file (org-agenda-files))
           (dolist (entry (org-agenda-get-day-entries file date))
             (if (nano-agenda-select-entry entry)
                 (setq level (+ level 1)))))
@@ -353,20 +356,25 @@ for efficiency."
          (month    (ts-month selected))
          (year     (ts-year  selected))
          (date     (list month day year))
+         (today    (ts-now))
+         (is-today (and (= (ts-year selected) (ts-year today))
+                        (= (ts-doy selected) (ts-doy today))))
          (holidays (calendar-check-holidays date))
          (entries '()))
 
     ;; Header (literal date + holidays (if any))
     (insert "\n")
     (insert (ts-format "*%A %-e %B %Y*" selected))
-    (if holidays
+    (if is-today
+        (insert (format-time-string " /(%H:%M)/")))
+    (if (and (not is-today) holidays)
         (insert (format " /(%s)/" (nth 0 holidays))))
     (insert "\n\n")
 
     ;; Body (only timed entries)
 
     ;; Collect all entries with 'time-of-day
-    (dolist (file org-agenda-files)
+    (dolist (file (org-agenda-files))
       (dolist (entry (org-agenda-get-day-entries file date))
         (if (nano-agenda-select-entry entry)
             (add-to-list 'entries entry))))
@@ -378,13 +386,14 @@ for efficiency."
                                      (get-text-property 0 'time-of-day entry-2)))))
 
     ;; Display entries
-    (dolist (entry (cl-subseq entries 0 (min 4 (length entries))))
-      (nano-agenda-display-entry entry))
-    (if (> (length entries) 4)
-        (insert (format "/+%S non-displayed event(s)/" (- (length entries) 4)))))
-
+    (let ((limit (if (< (length entries) 6) 6 4)))
+      (dolist (entry (cl-subseq entries 0 (min limit (length entries))))
+        (nano-agenda-display-entry entry))
+      (if (> (length entries) limit)
+          (insert (format "/+%S non-displayed event(s)/" (- (length entries) limit))))))
   
-  (goto-char (point-min)))
+    (goto-char (point-min)))
+
 
 (defun nano-agenda--populate-calendar ()
   "Populate the calendar according to the month of the current selected date."
@@ -476,7 +485,7 @@ for efficiency."
                                                      ""))
                                 'keymap map))
             (if (< col 6)
-                (insert (propertize (if is-today "•" " ") 'face face)))))
+                (insert (propertize (if is-today nano-agenda-today-symbol " ") 'face face)))))
       (if (< row 5) (insert "\n")))))
 
 (provide 'nano-agenda)
