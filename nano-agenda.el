@@ -4,7 +4,7 @@
 
 ;; Maintainer: Nicolas P. Rougier <Nicolas.Rougier@inria.fr>
 ;; URL: https://github.com/rougier/nano-agenda
-;; Version: 0.2.1
+;; Version: 0.3
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: convenience, org-mode, org-agenda
 
@@ -37,6 +37,14 @@
 ;; M-x: nano-agenda
 ;;
 ;;; NEWS:
+;;
+;; Version 0.3.0
+;; - Use of a single buffer for calendar + agenda
+;; - Added palette choice for colorizing the calendar
+;;
+;; Version 0.2.2
+;; - Better entries sorting
+;; - Include non timestamped entries
 ;;
 ;; Version 0.2.1
 ;; - Removed ts requirements
@@ -74,6 +82,10 @@
   "Symbol to show current day"
   :group 'nano-agenda)
 
+(defcustom nano-agenda-deadline-symbol  "!"
+  "Symbol to show a deadline in calendar"
+  :group 'nano-agenda)
+
 (defcustom nano-agenda-sort-function #'nano-agenda-default-sort-function
   "Function to sort a day's entries.
 This function takes an entries list and returns the list in the desired order."
@@ -85,18 +97,65 @@ This function takes an entry and the selected date. Returns a value if the entry
 should be shown, otherwise, returns nil."
   :group 'nano-agenda)
 
-(defcustom nano-agenda-busy-backgrounds  (list "#FFF9DB" "#FFF3BF" "#FFEC99" "#FFE066" "#FFD43B"
-                                               "#FCC419" "#FAB005" "#F59F00" "#F08C00" "#E67700")
-  "Background colors to be used to highlight a day in calendar
-  view according to busy level."
-  :type '(repeat color)
-  :group 'nano-agenda-faces)
+;; See https://material.io/design/color/the-color-system.html
+(defvar nano-agenda-palettes
+  '((red         . ("#FFEBEE" "#FFCDD2" "#EF9A9A" "#E57373" "#EF5350"
+                    "#F44336" "#E53935" "#D32F2F" "#C62828" "#B71C1C"))
+    (pink        . ("#FCE4EC" "#F8BBD0" "#F48FB1" "#F06292" "#EC407A"
+                    "#E91E63" "#D81B60" "#C2185B" "#AD1457" "#880E4F"))
+    (purple      . ("#F3E5F5" "#E1BEE7" "#CE93D8" "#BA68C8" "#AB47BC"
+                    "#9C27B0" "#8E24AA" "#7B1FA2" "#6A1B9A" "#4A148C"))
+    (deep-purple . ("#EDE7F6" "#D1C4E9" "#B39DDB" "#9575CD" "#7E57C2"
+                    "#673AB7" "#5E35B1" "#512DA8" "#4527A0" "#311B92"))
+    (indigo      . ("#E8EAF6" "#C5CAE9" "#9FA8DA" "#7986CB" "#5C6BC0"
+                    "#3F51B5" "#3949AB" "#303F9F" "#283593" "#1A237E"))
+    (blue        . ("#E3F2FD" "#BBDEFB" "#90CAF9" "#64B5F6" "#42A5F5"
+                    "#2196F3" "#1E88E5" "#1976D2" "#1565C0" "#0D47A1"))
+    (light-blue  . ("#E1F5FE" "#B3E5FC" "#81D4FA" "#4FC3F7" "#29B6F6"
+                    "#03A9F4" "#039BE5" "#0288D1" "#0277BD" "#01579B"))
+    (cyan        . ("#E0F7FA" "#B2EBF2" "#80DEEA" "#4DD0E1" "#26C6DA"
+                    "#00BCD4" "#00ACC1" "#0097A7" "#00838F" "#006064"))
+    (teal        . ("#E0F2F1" "#B2DFDB" "#80CBC4" "#4DB6AC" "#26A69A"
+                    "#009688" "#00897B" "#00796B" "#00695C" "#004D40"))
+    (green       . ("#E8F5E9" "#C8E6C9" "#A5D6A7" "#81C784" "#66BB6A"
+                    "#4CAF50" "#43A047" "#388E3C" "#2E7D32" "#1B5E20"))
+    (light-green . ("#F1F8E9" "#DCEDC8" "#C5E1A5" "#AED581" "#9CCC65"
+                    "#8BC34A" "#7CB342" "#689F38" "#558B2F" "#33691E"))
+    (lime        . ("#F9FBE7" "#F0F4C3" "#E6EE9C" "#DCE775" "#D4E157"
+                    "#CDDC39" "#C0CA33" "#AFB42B" "#9E9D24" "#827717"))
+    (yellow      . ("#FFFDE7" "#FFF9C4" "#FFF59D" "#FFF176" "#FFEE58"
+                    "#FFEB3B" "#FDD835" "#FBC02D" "#F9A825" "#F57F17"))
+    (amber       . ("#FFF8E1" "#FFECB3" "#FFE082" "#FFD54F" "#FFCA28"
+                    "#FFC107" "#FFB300" "#FFA000" "#FF8F00" "#FF6F00"))
+    (orange      . ("#FFF3E0" "#FFE0B2" "#FFCC80" "#FFB74D" "#FFA726"
+                    "#FF9800" "#FB8C00" "#F57C00" "#EF6C00" "#E65100"))
+    (deep-orange . ("#FBE9E7" "#FFCCBC" "#FFAB91" "#FF8A65" "#FF7043"
+                    "#FF5722" "#F4511E" "#E64A19" "#D84315" "#BF360C"))
+    (brown       . ("#EFEBE9" "#D7CCC8" "#BCAAA4" "#A1887F" "#8D6E63"
+                    "#795548" "#6D4C41" "#5D4037" "#4E342E" "#3E2723"))
+    (grey        . ("#FAFAFA" "#F5F5F5" "#EEEEEE" "#E0E0E0" "#BDBDBD"
+                    "#9E9E9E" "#757575" "#616161" "#424242" "#212121"))
+    (blue-grey   . ("#ECEFF1" "#CFD8DC" "#B0BEC5" "#90A4AE" "#78909C"
+                    "#607D8B" "#546E7A" "#455A64" "#37474F" "#263238"))))
 
-(defcustom nano-agenda-busy-foregrounds (list "#000000" "#000000" "#000000" "#000000" "#000000"
-                                              "#000000" "#000000" "#000000" "#000000" "#FFFFFF")
-  "Foreground colors to be used to highlight a day in calendar
+
+(defun nano-agenda-color-luminance (color)
+  "Calculate the relative luminance of a color string (e.g. \"#ffaa00\", \"blue\").
+Return a value between 0 and 1."
+  (let* ((values (x-color-values color))
+         (red (/ (car values) 256.0))
+         (green (/ (cadr values) 256.0))
+         (blue (/ (caddr values) 256.0)))
+    (/ (+ (* .2126 red) (* .7152 green) (* .0722 blue)) 255)))
+
+(defcustom nano-agenda-palette 'amber
+  "Background colors to use to highlight a day in calendar
   view according to busy level."
-  :type '(repeat color)
+  :type `(choice (const red)    (const pink)  (const purple)      (const deep-purple)
+                 (const indigo) (const blue)  (const light-blue)  (const cyan)
+                 (const teal)   (const green) (const light-green) (const lime)
+                 (const yellow) (const amber) (const orange)      (const deep-orange)
+                 (const brown)  (const grey)  (const blue-grey))
   :group 'nano-agenda-faces)
 
 (defface nano-agenda-default
@@ -107,6 +166,16 @@ should be shown, otherwise, returns nil."
 (defface nano-agenda-selected
   '((t :inherit default :inverse-video t))
   "Face for the selected day"
+  :group 'nano-agenda-faces)
+
+(defface nano-agenda-time
+  '((t :inherit font-lock-comment-face))
+  "Time face"
+  :group 'nano-agenda-faces)
+
+(defface nano-agenda-current-day
+  '((t :inherit bold))
+  "Current day face"
   :group 'nano-agenda-faces)
 
 (defface nano-agenda-weekend
@@ -318,39 +387,47 @@ behavior is to split vertically current window.
 |                          |    |                          |
 |                          |    |                          |
 |                          | -> |                          |
-|                          |    +----------+---------------+
-|                          |    | calendar | agenda        |
-+--------------------------+    +----------+---------------+"
-  
-  (split-window nil -10 nil))
+|                          |    +--------------------------+
+|                          |    |    calendar /  agenda    |
++--------------------------+    +--------------------------+"
+
+  (let* ((agenda-buffer "*nano-agenda*")
+         (agenda-window (get-buffer-window agenda-buffer)))
+    (or agenda-window (split-window nil -10 'below))))
+
 
 (defun nano-agenda-select-entry (entry &optional date)
   "Function to decide whether an entry is
-displayed/counted. Default behavior is to select only timestamped
-entries."
-  (get-text-property 0 'time-of-day entry))
+displayed/counted. Default behavior is to select all entries."
 
-(defun nano-agenda-default-sort-function (entries)
+  (not (string-search ":CANCELLED:" entry)))
+
+(defun nano-agenda-default-sort-function (entry-1 entry-2)
   "Function to decide the order ENTRIES will be shown to the user.
 Returns entries in `time-of-day' order."
-  (sort entries #'(lambda (entry-1 entry-2)
-                    (<
-                     (get-text-property 0 'time-of-day entry-1)
-                     (get-text-property 0 'time-of-day entry-2)))))
 
-(defun nano-agenda-display-entry (entry)
+  (let ((time-1 (get-text-property 0 'time-of-day entry-1))
+        (time-2 (get-text-property 0 'time-of-day entry-2)))
+    (cond ((not time-1) t)
+          ((not time-2) nil)
+          (t (< time-1 time-2)))))
+
+(defun nano-agenda-format-entry (entry)
   "Function to display a specific (org) entry"
 
-  (let* ((text        (get-text-property 0 'txt entry))
-         (time        (get-text-property 0 'time entry))
+  (let* ((text (get-text-property 0 'txt entry))
+         (text (replace-regexp-in-string ":.*:" "" text))
+         (text (string-trim text))
+         ;; (time (get-text-property 0 'time entry))
          (time-of-day (get-text-property 0 'time-of-day entry))
-         (hours       (if time-of-day
-                          (format "/%02dh —/" (floor (/ time-of-day 100)))
-                        "     "))
-         (minutes     (if time-of-day
-                          (% time-of-day 100) -1))
-         (duration    (get-text-property 0 'duration entry)))
-    (insert (format "%s %s\n" hours text))))
+         (hours (when time-of-day (floor (/ time-of-day 100))))
+         (minutes (when time-of-day (% time-of-day 100) -1))
+         (duration (get-text-property 0 'duration entry)))
+    (if hours
+        (concat (propertize (format "%02dh" hours) 'face 'nano-agenda-time)
+                " - "
+                text)
+      text)))
 
 
 ;;;###autoload
@@ -359,59 +436,28 @@ Returns entries in `time-of-day' order."
 
   (interactive)
   
-  (let* ((calendar-buffer "*nano-calendar*")
-         (agenda-buffer "*nano-agenda*")
-         (calendar-window (get-buffer-window calendar-buffer))
-         (agenda-window (get-buffer-window agenda-buffer)))
-
-    ;; Create calendar window if necessary
-    (unless calendar-window
-      (when agenda-window
-        (delete-window agenda-window)
-        (setq agenda-window nil))
-      (setq calendar-window (nano-agenda-select-window)))
-
-    ;; Create agenda window if necessary
-    (unless agenda-window
-      (setq agenda-window (split-window calendar-window 25 'right)))
-
-    ;; Setup calendar window
-   (with-selected-window calendar-window
-     (switch-to-buffer calendar-buffer)
-     (set-window-dedicated-p calendar-window t)
-     (set-window-margins calendar-window 1)
-     (nano-agenda-mode t)
-     (setq header-line-format nil)
-     (setq window-size-fixed 'width))
-
-   ;; Setup agenda window
-   (with-selected-window agenda-window
-     (switch-to-buffer agenda-buffer)
-     (org-mode)
-     (nano-agenda-mode t)
-     (set-window-dedicated-p agenda-window t)
-     (setq header-line-format nil))
-
-   (nano-agenda-update)
-   (select-window calendar-window)
-   nil))
-
+  (let* ((agenda-buffer "*nano-agenda*")
+         (agenda-window (nano-agenda-select-window)))
+    (select-window agenda-window)
+    (switch-to-buffer agenda-buffer)
+    (toggle-truncate-lines 1)
+    (set-window-dedicated-p agenda-window t)
+    (set-window-margins agenda-window 2 2)
+    (nano-agenda-mode t)
+    ;; (setq header-line-format nil)
+    (setq mode-line-format nil)
+    (nano-agenda-update)))
 
 (defun nano-agenda-update ()
   "Update calendar and agenda according to selected date."
   
-  (with-current-buffer "*nano-calendar*"
-    (let ((inhibit-read-only t))
-      (erase-buffer)
-      (goto-char (point-min))
-      (nano-agenda--populate-calendar)))
-
   (with-current-buffer "*nano-agenda*"
     (let ((inhibit-read-only t))
       (erase-buffer)
       (goto-char (point-min))
+      (nano-agenda--populate-calendar)
+      (goto-char (point-min))
       (nano-agenda--populate-agenda))))
-  
 
 (defun nano-agenda-kill ()
   "Kill buffers and windows associated with the agenda."
@@ -431,6 +477,17 @@ Returns entries in `time-of-day' order."
   (setq nano-agenda--busy-levels (list)))
 
 
+(defun nano-agenda--has-deadline (date)
+  "Check if a cached entry has a deadline"
+    
+  (let* ((day   (nano-agenda-date-day   date))
+         (month (nano-agenda-date-month date))
+         (year  (nano-agenda-date-year  date))
+         (date  (list month day year))
+         (entry (assoc date nano-agenda--busy-levels)))
+    (when entry
+      (nth 2 entry))))
+
 (defun nano-agenda--busy-level (date)
   "Compute the busy level at a given date. This is done by
 counting the number of timed entries. Computed levels are cached
@@ -441,16 +498,18 @@ for efficiency."
          (year  (nano-agenda-date-year  date))
          (date  (list month day year))
          (level 0)
+         (deadline nil)
          (entry (assoc date nano-agenda--busy-levels)))
-
     (if entry
         (cadr entry)
       (progn
         (dolist (file (org-agenda-files))
           (dolist (entry (org-agenda-get-day-entries file date))
-            (if (funcall nano-agenda-select-entry-predicate entry date)
+            (when (string-equal (get-text-property 0 'type entry) "deadline")
+              (setq deadline t))
+            (when (funcall nano-agenda-select-entry-predicate entry date)
                 (setq level (+ level 1)))))
-        (add-to-list 'nano-agenda--busy-levels `(,date ,level))
+        (add-to-list 'nano-agenda--busy-levels `(,date ,level ,deadline))
         level))))
 
 
@@ -468,13 +527,21 @@ for efficiency."
          (entries '()))
 
     ;; Header (literal date + holidays (if any))
-    (insert "\n")
-    (insert (format-time-string "*%A %-e %B %Y*" selected))
+    (forward-line)
+    (end-of-line)
+    (insert "   ")
+    (insert (propertize (format-time-string "%A %-e %B %Y" selected)
+                        'face 'nano-agenda-current-day))
+    (end-of-line)
+
     (if is-today
-        (insert (format-time-string " /(%H:%M)/")))
-    (if (and (not is-today) holidays)
-        (insert (format " /(%s)/" (nth 0 holidays))))
-    (insert "\n\n")
+      (insert (propertize (format-time-string " (%H:%M)")
+                          'face 'nano-agenda-time))
+      (when holidays
+        (insert (propertize (format " %s" holidays)
+                            'face 'nano-agenda-holidays))))
+    (forward-line 2)
+    (end-of-line)
 
     ;; Body (default timed entries)
 
@@ -485,16 +552,20 @@ for efficiency."
             (add-to-list 'entries entry))))
 
     ;; Sort entries
-    (setq entries (funcall nano-agenda-sort-function entries))
+    (setq entries (sort entries nano-agenda-sort-function))
 
     ;; Display entries
-    (let ((limit (if (< (length entries) 6) 6 4)))
+    (let ((limit (if (< (length entries) 7) 7 4)))
       (dolist (entry (cl-subseq entries 0 (min limit (length entries))))
-        (nano-agenda-display-entry entry))
+        (insert (concat "   "
+                        (nano-agenda-format-entry entry)))
+        (forward-line)
+        (end-of-line))
       (if (> (length entries) limit)
-          (insert (format "/+%S non-displayed event(s)/" (- (length entries) limit))))))
+          (insert (concat "   "
+                  (format "+%S non-displayed event(s)" (- (length entries) limit))))))
   
-    (goto-char (point-min)))
+    (goto-char (point-min))))
 
 
 (defun nano-agenda--populate-calendar ()
@@ -519,14 +590,14 @@ for efficiency."
                                  (nano-agenda-date-month-name selected)
                                  (nano-agenda-date-year selected)) 18)
                         'face 'nano-agenda-month-name))
-    (insert (propertize ">" 'face 'nano-agenda-button
+    (insert (propertize "> " 'face 'nano-agenda-button
                         'mouse-face 'nano-agenda-mouse
                         'help-echo "Next month"
                         'keymap map-right))
     (insert "\n")
     (insert (propertize "Mo Tu We Th Fr "
                         'face 'nano-agenda-day-name))
-    (insert (propertize "Sa Su"
+    (insert (propertize "Sa Su "
                         'face 'nano-agenda-day-name))
     (insert "\n"))
   
@@ -548,13 +619,14 @@ for efficiency."
 
                ;; Slow
                (level (nano-agenda--busy-level date))
-               (level (min (length nano-agenda-busy-foregrounds) level))
-               (foreground (nth (- level 1) nano-agenda-busy-foregrounds))
-               (background (nth (- level 1) nano-agenda-busy-backgrounds))
-               ;; ----
-
+               (backgrounds (alist-get nano-agenda-palette nano-agenda-palettes))
+               (level (min (length backgrounds) level))
+               (background (nth (- level 1) backgrounds))
+               (foreground (if (< (nano-agenda-color-luminance background) 0.5)
+                               "white" "black"))
                (map (make-sparse-keymap))
                (is-today (nano-agenda-date-is-today date))
+               (has-deadline (nano-agenda--has-deadline date))
                (is-selected (nano-agenda-date-equal date selected))
                (is-selected-today (and is-selected is-today))
                (is-outday (not (= (nano-agenda-date-month date) month)))
@@ -585,8 +657,11 @@ for efficiency."
                                                    (if is-holidays (format " (%s)" (nth 0 is-holidays))
                                                      ""))
                                 'keymap map))
-            (if (< col 6)
-                (insert (propertize (if is-today nano-agenda-today-symbol " ") 'face face)))))
+            (if (< col 7)
+                (insert (propertize (cond (is-today nano-agenda-today-symbol)
+                                          (has-deadline nano-agenda-deadline-symbol)
+                                          (t " "))
+                                    'face face)))))
       (if (< row 5) (insert "\n")))))
 
 (provide 'nano-agenda)
